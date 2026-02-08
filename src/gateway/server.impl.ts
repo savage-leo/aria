@@ -546,7 +546,8 @@ export async function startGatewayServer(
   });
 
   let browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> = null;
-  ({ browserControl, pluginServices } = await startGatewaySidecars({
+  let mt5Bridge: Awaited<ReturnType<typeof startGatewaySidecars>>["mt5Bridge"] = null;
+  ({ browserControl, pluginServices, mt5Bridge } = await startGatewaySidecars({
     cfg: cfgAtStart,
     pluginRegistry,
     defaultWorkspaceDir,
@@ -604,6 +605,7 @@ export async function startGatewayServer(
     canvasHostServer,
     stopChannel,
     pluginServices,
+    mt5Bridge,
     cron,
     heartbeatRunner,
     nodePresenceTimers,

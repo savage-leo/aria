@@ -78,7 +78,11 @@ describe("exec tool backgrounding", () => {
 
   afterEach(() => {
     if (!isWin) {
-      process.env.SHELL = originalShell;
+      if (originalShell === undefined) {
+        delete process.env.SHELL;
+      } else {
+        process.env.SHELL = originalShell;
+      }
     }
   });
 
@@ -315,7 +319,11 @@ describe("exec PATH handling", () => {
   afterEach(() => {
     process.env.PATH = originalPath;
     if (!isWin) {
-      process.env.SHELL = originalShell;
+      if (originalShell === undefined) {
+        delete process.env.SHELL;
+      } else {
+        process.env.SHELL = originalShell;
+      }
     }
   });
 

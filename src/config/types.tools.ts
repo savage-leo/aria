@@ -336,8 +336,8 @@ export type ToolsConfig = {
     search?: {
       /** Enable web search tool (default: true when API key is present). */
       enabled?: boolean;
-      /** Search provider ("brave" or "perplexity"). */
-      provider?: "brave" | "perplexity";
+      /** Search provider ("brave", "perplexity", or "ollama"). */
+      provider?: "brave" | "perplexity" | "ollama";
       /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
       apiKey?: string;
       /** Default search results count (1-10). */
@@ -354,6 +354,15 @@ export type ToolsConfig = {
         baseUrl?: string;
         /** Model to use (defaults to "perplexity/sonar-pro"). */
         model?: string;
+      };
+      /** Ollama-specific configuration (used when provider="ollama"). */
+      ollama?: {
+        /** Base URL for Ollama (defaults to OLLAMA_HOST or http://localhost:11434). */
+        baseUrl?: string;
+        /** Model to use (defaults to OLLAMA_MODEL or llama3.1). */
+        model?: string;
+        /** Additional headers for Ollama requests. */
+        headers?: Record<string, string>;
       };
     };
     fetch?: {
@@ -388,6 +397,54 @@ export type ToolsConfig = {
         timeoutSeconds?: number;
       };
     };
+  };
+  /** Local MT5 bridge tool configuration. */
+  mt5?: {
+    /** Enable the MT5 tool (default: true). */
+    enabled?: boolean;
+    /** Base URL for the MT5 bridge (default: http://localhost:5001). */
+    baseUrl?: string;
+    /** Request timeout in seconds. */
+    timeoutSeconds?: number;
+    /** Additional headers added to every request. */
+    headers?: Record<string, string>;
+    /** Allow non-local base URLs (default: false). */
+    allowRemote?: boolean;
+    /** Allow private network access (default: true). */
+    allowPrivateNetwork?: boolean;
+    /** Explicit allowlist of hostnames for SSRF policy. */
+    allowedHostnames?: string[];
+    bridge?: {
+      /** Enable the MT5 bridge auto-start (default: true). */
+      enabled?: boolean;
+      /** Python executable to run (default: python3). */
+      pythonBin?: string;
+      /** Path to the MT5 bridge script (default: scripts/mt5-bridge/mt5_bridge.py). */
+      scriptPath?: string;
+      /** Bind host for the bridge (default: 127.0.0.1). */
+      host?: string;
+      /** Bind port for the bridge (default: 5001). */
+      port?: number;
+      /** Extra environment variables for the bridge process. */
+      env?: Record<string, string>;
+    };
+  };
+  /** Local OpenBB API tool configuration. */
+  openbb?: {
+    /** Enable the OpenBB tool (default: true). */
+    enabled?: boolean;
+    /** Base URL for the OpenBB API (default: http://localhost:6900). */
+    baseUrl?: string;
+    /** Request timeout in seconds. */
+    timeoutSeconds?: number;
+    /** Additional headers added to every request. */
+    headers?: Record<string, string>;
+    /** Allow non-local base URLs (default: false). */
+    allowRemote?: boolean;
+    /** Allow private network access (default: true). */
+    allowPrivateNetwork?: boolean;
+    /** Explicit allowlist of hostnames for SSRF policy. */
+    allowedHostnames?: string[];
   };
   media?: MediaToolsConfig;
   links?: LinkToolsConfig;

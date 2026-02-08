@@ -13,6 +13,7 @@ export function createGatewayCloseHandler(params: {
   canvasHostServer: CanvasHostServer | null;
   stopChannel: (name: ChannelId, accountId?: string) => Promise<void>;
   pluginServices: PluginServicesHandle | null;
+  mt5Bridge: { stop: () => Promise<void> } | null;
   cron: { stop: () => void };
   heartbeatRunner: HeartbeatRunner;
   nodePresenceTimers: Map<string, ReturnType<typeof setInterval>>;
@@ -66,6 +67,9 @@ export function createGatewayCloseHandler(params: {
     }
     if (params.pluginServices) {
       await params.pluginServices.stop().catch(() => {});
+    }
+    if (params.mt5Bridge) {
+      await params.mt5Bridge.stop().catch(() => {});
     }
     await stopGmailWatcher();
     params.cron.stop();

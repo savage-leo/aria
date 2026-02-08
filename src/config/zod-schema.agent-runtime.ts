@@ -171,7 +171,9 @@ export const ToolPolicySchema = ToolPolicyBaseSchema.superRefine((value, ctx) =>
 export const ToolsWebSearchSchema = z
   .object({
     enabled: z.boolean().optional(),
-    provider: z.union([z.literal("brave"), z.literal("perplexity")]).optional(),
+    provider: z
+      .union([z.literal("brave"), z.literal("perplexity"), z.literal("ollama")])
+      .optional(),
     apiKey: z.string().optional(),
     maxResults: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
@@ -181,6 +183,14 @@ export const ToolsWebSearchSchema = z
         apiKey: z.string().optional(),
         baseUrl: z.string().optional(),
         model: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    ollama: z
+      .object({
+        baseUrl: z.string().optional(),
+        model: z.string().optional(),
+        headers: z.record(z.string(), z.string()).optional(),
       })
       .strict()
       .optional(),
@@ -205,6 +215,45 @@ export const ToolsWebSchema = z
   .object({
     search: ToolsWebSearchSchema,
     fetch: ToolsWebFetchSchema,
+  })
+  .strict()
+  .optional();
+
+export const ToolsLocalApiSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    baseUrl: z.string().optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    allowRemote: z.boolean().optional(),
+    allowPrivateNetwork: z.boolean().optional(),
+    allowedHostnames: z.array(z.string()).optional(),
+  })
+  .strict()
+  .optional();
+
+export const ToolsMt5BridgeSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    pythonBin: z.string().optional(),
+    scriptPath: z.string().optional(),
+    host: z.string().optional(),
+    port: z.number().int().positive().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+  })
+  .strict()
+  .optional();
+
+export const ToolsMt5Schema = z
+  .object({
+    enabled: z.boolean().optional(),
+    baseUrl: z.string().optional(),
+    timeoutSeconds: z.number().int().positive().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    allowRemote: z.boolean().optional(),
+    allowPrivateNetwork: z.boolean().optional(),
+    allowedHostnames: z.array(z.string()).optional(),
+    bridge: ToolsMt5BridgeSchema,
   })
   .strict()
   .optional();
@@ -474,6 +523,8 @@ export const ToolsSchema = z
     deny: z.array(z.string()).optional(),
     byProvider: z.record(z.string(), ToolPolicyWithProfileSchema).optional(),
     web: ToolsWebSchema,
+    mt5: ToolsMt5Schema,
+    openbb: ToolsLocalApiSchema,
     media: ToolsMediaSchema,
     links: ToolsLinksSchema,
     message: z

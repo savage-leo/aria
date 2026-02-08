@@ -17,7 +17,7 @@ import {
   writeCache,
 } from "./web-shared.js";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity"] as const;
+const SEARCH_PROVIDERS = ["brave", "perplexity", "ollama"] as const;
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
 
@@ -25,6 +25,8 @@ const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_PERPLEXITY_BASE_URL = "https://openrouter.ai/api/v1";
 const PERPLEXITY_DIRECT_BASE_URL = "https://api.perplexity.ai";
 const DEFAULT_PERPLEXITY_MODEL = "perplexity/sonar-pro";
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
+const DEFAULT_OLLAMA_MODEL = "llama3.1";
 const PERPLEXITY_KEY_PREFIXES = ["pplx-"];
 const OPENROUTER_KEY_PREFIXES = ["sk-or-"];
 
@@ -90,6 +92,12 @@ type PerplexityConfig = {
   model?: string;
 };
 
+type OllamaConfig = {
+  baseUrl?: string;
+  model?: string;
+  headers?: Record<string, string>;
+};
+
 type PerplexityApiKeySource = "config" | "perplexity_env" | "openrouter_env" | "none";
 
 type PerplexitySearchResponse = {
@@ -137,6 +145,14 @@ function missingSearchKeyPayload(provider: (typeof SEARCH_PROVIDERS)[number]) {
       docs: "https://docs.openclaw.ai/tools/web",
     };
   }
+  if (provider === "ollama") {
+    return {
+      error: "ollama_unreachable",
+      message:
+        "web_search (ollama) did not return a response. Ensure OLLAMA_HOST is reachable or configure tools.web.search.ollama.baseUrl.",
+      docs: "https://docs.openclaw.ai/tools/web",
+    };
+  }
   return {
     error: "missing_brave_api_key",
     message: `web_search needs a Brave Search API key. Run \`${formatCliCommand("openclaw configure --section web")}\` to store it, or set BRAVE_API_KEY in the Gateway environment.`,
@@ -155,6 +171,9 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
   if (raw === "brave") {
     return "brave";
   }
+  if (raw === "ollama") {
+    return "ollama";
+  }
   return "brave";
 }
 
@@ -167,6 +186,17 @@ function resolvePerplexityConfig(search?: WebSearchConfig): PerplexityConfig {
     return {};
   }
   return perplexity as PerplexityConfig;
+}
+
+function resolveOllamaConfig(search?: WebSearchConfig): OllamaConfig {
+  if (!search || typeof search !== "object") {
+    return {};
+  }
+  const ollama = "ollama" in search ? search.ollama : undefined;
+  if (!ollama || typeof ollama !== "object") {
+    return {};
+  }
+  return ollama as OllamaConfig;
 }
 
 function resolvePerplexityApiKey(perplexity?: PerplexityConfig): {
@@ -245,6 +275,29 @@ function resolvePerplexityModel(perplexity?: PerplexityConfig): string {
       ? perplexity.model.trim()
       : "";
   return fromConfig || DEFAULT_PERPLEXITY_MODEL;
+}
+
+function resolveOllamaBaseUrl(ollama?: OllamaConfig): string {
+  const fromConfig =
+    ollama && "baseUrl" in ollama && typeof ollama.baseUrl === "string"
+      ? ollama.baseUrl.trim()
+      : "";
+  const fromEnv = (process.env.OLLAMA_HOST ?? "").trim();
+  return fromConfig || fromEnv || DEFAULT_OLLAMA_BASE_URL;
+}
+
+function resolveOllamaModel(ollama?: OllamaConfig): string {
+  const fromConfig =
+    ollama && "model" in ollama && typeof ollama.model === "string" ? ollama.model.trim() : "";
+  const fromEnv = (process.env.OLLAMA_MODEL ?? "").trim();
+  return fromConfig || fromEnv || DEFAULT_OLLAMA_MODEL;
+}
+
+function resolveOllamaHeaders(ollama?: OllamaConfig): Record<string, string> {
+  if (ollama?.headers && typeof ollama.headers === "object") {
+    return { ...ollama.headers };
+  }
+  return {};
 }
 
 function resolveSearchCount(value: unknown, fallback: number): number {
@@ -350,10 +403,41 @@ async function runPerplexitySearch(params: {
   return { content, citations };
 }
 
+async function runOllamaSearch(params: {
+  query: string;
+  baseUrl: string;
+  model: string;
+  timeoutSeconds: number;
+  headers?: Record<string, string>;
+}): Promise<{ content: string }> {
+  const endpoint = new URL("/api/generate", params.baseUrl).toString();
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(params.headers ?? {}),
+    },
+    body: JSON.stringify({
+      model: params.model,
+      prompt: params.query,
+      stream: false,
+    }),
+    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
+  });
+
+  if (!res.ok) {
+    const detail = await readResponseText(res);
+    throw new Error(`Ollama API error (${res.status}): ${detail || res.statusText}`);
+  }
+
+  const data = (await res.json()) as { response?: string };
+  return { content: data.response ?? "No response" };
+}
+
 async function runWebSearch(params: {
   query: string;
   count: number;
-  apiKey: string;
+  apiKey?: string;
   timeoutSeconds: number;
   cacheTtlMs: number;
   provider: (typeof SEARCH_PROVIDERS)[number];
@@ -363,6 +447,9 @@ async function runWebSearch(params: {
   freshness?: string;
   perplexityBaseUrl?: string;
   perplexityModel?: string;
+  ollamaBaseUrl?: string;
+  ollamaModel?: string;
+  ollamaHeaders?: Record<string, string>;
 }): Promise<Record<string, unknown>> {
   const cacheKey = normalizeCacheKey(
     params.provider === "brave"
@@ -376,10 +463,30 @@ async function runWebSearch(params: {
 
   const start = Date.now();
 
+  if (params.provider === "ollama") {
+    const { content } = await runOllamaSearch({
+      query: params.query,
+      baseUrl: params.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL,
+      model: params.ollamaModel ?? DEFAULT_OLLAMA_MODEL,
+      timeoutSeconds: params.timeoutSeconds,
+      headers: params.ollamaHeaders,
+    });
+
+    const payload = {
+      query: params.query,
+      provider: params.provider,
+      model: params.ollamaModel ?? DEFAULT_OLLAMA_MODEL,
+      tookMs: Date.now() - start,
+      content: wrapWebContent(content),
+    };
+    writeCache(SEARCH_CACHE, cacheKey, payload, params.cacheTtlMs);
+    return payload;
+  }
+
   if (params.provider === "perplexity") {
     const { content, citations } = await runPerplexitySearch({
       query: params.query,
-      apiKey: params.apiKey,
+      apiKey: params.apiKey ?? "",
       baseUrl: params.perplexityBaseUrl ?? DEFAULT_PERPLEXITY_BASE_URL,
       model: params.perplexityModel ?? DEFAULT_PERPLEXITY_MODEL,
       timeoutSeconds: params.timeoutSeconds,
@@ -399,6 +506,9 @@ async function runWebSearch(params: {
 
   if (params.provider !== "brave") {
     throw new Error("Unsupported web search provider.");
+  }
+  if (!params.apiKey) {
+    throw new Error("Brave Search API key required.");
   }
 
   const url = new URL(BRAVE_SEARCH_ENDPOINT);
@@ -469,11 +579,14 @@ export function createWebSearchTool(options?: {
 
   const provider = resolveSearchProvider(search);
   const perplexityConfig = resolvePerplexityConfig(search);
+  const ollamaConfig = resolveOllamaConfig(search);
 
   const description =
     provider === "perplexity"
       ? "Search the web using Perplexity Sonar (direct or via OpenRouter). Returns AI-synthesized answers with citations from real-time web search."
-      : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+      : provider === "ollama"
+        ? "Answer queries with a local Ollama model (no live web access)."
+        : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
     label: "Web Search",
@@ -485,8 +598,7 @@ export function createWebSearchTool(options?: {
         provider === "perplexity" ? resolvePerplexityApiKey(perplexityConfig) : undefined;
       const apiKey =
         provider === "perplexity" ? perplexityAuth?.apiKey : resolveSearchApiKey(search);
-
-      if (!apiKey) {
+      if (provider !== "ollama" && !apiKey) {
         return jsonResult(missingSearchKeyPayload(provider));
       }
       const params = args as Record<string, unknown>;
@@ -530,6 +642,9 @@ export function createWebSearchTool(options?: {
           perplexityAuth?.apiKey,
         ),
         perplexityModel: resolvePerplexityModel(perplexityConfig),
+        ollamaBaseUrl: resolveOllamaBaseUrl(ollamaConfig),
+        ollamaModel: resolveOllamaModel(ollamaConfig),
+        ollamaHeaders: resolveOllamaHeaders(ollamaConfig),
       });
       return jsonResult(result);
     },

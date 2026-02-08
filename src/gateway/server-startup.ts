@@ -16,6 +16,7 @@ import {
 } from "../hooks/internal-hooks.js";
 import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { startMt5Bridge, type Mt5BridgeHandle } from "../mt5/bridge-service.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
@@ -44,6 +45,13 @@ export async function startGatewaySidecars(params: {
     browserControl = await startBrowserControlServerIfEnabled();
   } catch (err) {
     params.logBrowser.error(`server failed to start: ${String(err)}`);
+  }
+
+  let mt5Bridge: Mt5BridgeHandle | null = null;
+  try {
+    mt5Bridge = startMt5Bridge(params.cfg);
+  } catch (err) {
+    params.log.warn(`MT5 bridge failed to start: ${String(err)}`);
   }
 
   // Start Gmail watcher if configured (hooks.gmail.account).
@@ -156,5 +164,5 @@ export async function startGatewaySidecars(params: {
     }, 750);
   }
 
-  return { browserControl, pluginServices };
+  return { browserControl, pluginServices, mt5Bridge };
 }
