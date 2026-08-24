@@ -291,6 +291,12 @@ channels:
 | Indicator-only (no messages)             | `channels.defaults.heartbeat: { showOk: false, showAlerts: false, useIndicator: true }`  |
 | OKs in one channel only                  | `channels.telegram.heartbeat: { showOk: true }`                                          |
 
+## Autotelic discovery
+
+Heartbeat also runs a **discovery-only** autotelic tick before the agent turn. At most one candidate goal is proposed from `USER.md` / `SOUL.md` / `MEMORY.md`, stored in `{workspace}/goals/archive.json`, and appended as a short Autotelic section on the heartbeat user prompt. It does not replace the `HEARTBEAT.md` instructions, does not mutate gateway code, and does not auto-announce to chat. If nothing is proposed and nothing is active, the extra section is omitted so the usual `HEARTBEAT_OK` path still applies.
+
+See [Autotelic goals](/concepts/autotelic).
+
 ## HEARTBEAT.md (optional)
 
 If a `HEARTBEAT.md` file exists in the workspace, the default prompt tells the
